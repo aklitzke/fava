@@ -230,6 +230,10 @@ class ChartModule(FavaModule):
         """
         conv = conversion_from_str(conversion)
 
+        # Setup account filter matching if present
+        from .filters import Match
+        account_match = Match(filtered.account_filter) if filtered.account_filter else None
+
         def _balances() -> Iterable[tuple[date, CounterInventory]]:
             last_date = None
             running_balance = CounterInventory()
@@ -238,6 +242,9 @@ class ChartModule(FavaModule):
             for entry in filtered.entries:
                 for posting in getattr(entry, "postings", []):
                     if is_child_account(posting.account):
+                        # Only include in balance if it matches the account filter (if present)
+                        if account_match and not account_match(posting.account):
+                            continue
                         new_date = entry.date
                         if last_date is not None and new_date > last_date:
                             yield (last_date, running_balance)

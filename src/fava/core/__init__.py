@@ -601,6 +601,11 @@ class FavaLedger:
 
         prices = self.prices
         balance = CounterInventory()
+
+        # Setup account filter matching if present
+        from .filters import Match
+        account_match = Match(filtered.account_filter) if filtered.account_filter else None
+
         for index, entry in enumerate(filtered.entries_without_prices):
             change = CounterInventory()
             entry_is_relevant = False
@@ -609,6 +614,9 @@ class FavaLedger:
                 for posting in postings:
                     if relevant_account(posting.account):
                         entry_is_relevant = True
+                        # Only include in balance/change if it matches the account filter (if present)
+                        if account_match and not account_match(posting.account):
+                            continue
                         balance.add_position(posting)
                         change.add_position(posting)
             elif any(relevant_account(a) for a in get_entry_accounts(entry)):
