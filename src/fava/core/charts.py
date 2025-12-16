@@ -110,7 +110,8 @@ class ChartModule(FavaModule):
         conversion: Conversion,
     ) -> SerialisedTreeNode:
         """Render an account tree."""
-        tree = filtered.root_tree
+        # Use posting-filtered tree when account filter is present
+        tree = filtered.root_tree_posting_filtered if filtered.account_filter else filtered.root_tree
         return tree.get(account_name).serialise(
             conversion, self.ledger.prices, filtered.end_date
         )
@@ -140,13 +141,25 @@ class ChartModule(FavaModule):
         conv = conversion_from_str(conversion)
         prices = self.ledger.prices
 
+        # Setup account filter matching if present
+        from .filters import Match
+        account_match = Match(filtered.account_filter) if filtered.account_filter else None
+
+        # Use unfiltered entries if we have an account filter
+        base_entries = self.ledger.all_entries if filtered.account_filter else filtered.entries
+
+        # Apply time filter if present
+        if filtered.date_range and filtered.account_filter:
+            from beancount.ops.summarize import clamp_opt
+            base_entries, _ = clamp_opt(base_entries, filtered.date_range.begin, filtered.date_range.end, self.ledger.options)
+
         # limit the bar charts to 100 intervals
         intervals = filtered.interval_ranges(interval)[-100:]
 
         for date_range in intervals:
             inventory = CounterInventory()
             entries = slice_entry_dates(
-                filtered.entries, date_range.begin, date_range.end
+                base_entries, date_range.begin, date_range.end
             )
             account_inventories: dict[str, CounterInventory] = defaultdict(
                 CounterInventory,
@@ -154,6 +167,9 @@ class ChartModule(FavaModule):
             for entry in entries:
                 for posting in getattr(entry, "postings", []):
                     if posting.account.startswith(accounts):
+                        # Apply posting-level filter if present
+                        if account_match and not account_match(posting.account):
+                            continue
                         account_inventories[posting.account].add_position(
                             posting,
                         )
@@ -266,9 +282,18 @@ class ChartModule(FavaModule):
             operating currencies.
         """
         conv = conversion_from_str(conversion)
+
+        # Use unfiltered entries if we have an account filter, to avoid transaction-level filtering
+        entries = self.ledger.all_entries if filtered.account_filter else filtered.entries
+
+        # Apply time filter if present
+        if filtered.date_range and filtered.account_filter:
+            from beancount.ops.summarize import clamp_opt
+            entries, _ = clamp_opt(entries, filtered.date_range.begin, filtered.date_range.end, self.ledger.options)
+
         transactions = (
             entry
-            for entry in filtered.entries
+            for entry in entries
             if (
                 isinstance(entry, Transaction)
                 and entry.flag != FLAG_UNREALIZED
@@ -280,6 +305,10 @@ class ChartModule(FavaModule):
             self.ledger.options["name_liabilities"],
         )
 
+        # Setup account filter matching if present
+        from .filters import Match
+        account_match = Match(filtered.account_filter) if filtered.account_filter else None
+
         txn = next(transactions, None)
         inventory = CounterInventory()
 
@@ -288,6 +317,9 @@ class ChartModule(FavaModule):
             while txn and txn.date < date_range.end:
                 for posting in txn.postings:
                     if posting.account.startswith(types):
+                        # Apply posting-level filter if present
+                        if account_match and not account_match(posting.account):
+                            continue
                         inventory.add_position(posting)
                 txn = next(transactions, None)
             yield DateAndBalance(

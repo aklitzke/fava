@@ -694,7 +694,8 @@ def get_income_statement() -> TreeReport:
             label=f"{gettext('Expenses')} ({g.interval.label})",
         ),
     ]
-    root_tree = g.filtered.root_tree
+    # Use posting-filtered tree to only show accounts matching the filter
+    root_tree = g.filtered.root_tree_posting_filtered
     trees = [
         root_tree.get(options["name_income"]),
         root_tree.net_profit(options, gettext("Net Profit")),
@@ -715,7 +716,8 @@ def get_balance_sheet() -> TreeReport:
     options = g.ledger.options
 
     charts = [ChartApi.net_worth()]
-    root_tree_closed = g.filtered.root_tree_closed
+    # Use posting-filtered tree to only show accounts matching the filter
+    root_tree_closed = g.filtered.root_tree_closed_posting_filtered
     trees = [
         root_tree_closed.get(options["name_assets"]),
         root_tree_closed.get(options["name_liabilities"]),
@@ -734,7 +736,8 @@ def get_trial_balance() -> TreeReport:
     """Get the data for the trial balance."""
     g.ledger.changed()
 
-    trees = [g.filtered.root_tree.get("")]
+    # Use posting-filtered tree to only show accounts matching the filter
+    trees = [g.filtered.root_tree_posting_filtered.get("")]
 
     return TreeReport(
         g.filtered.date_range,

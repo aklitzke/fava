@@ -113,6 +113,7 @@ class FilteredLedger:
         "date_range",
         "entries",
         "ledger",
+        "account_filter",
     )
     _date_first: date | None
     _date_last: date | None
@@ -135,6 +136,7 @@ class FilteredLedger:
             ]
             | None
         ) = None
+        self.account_filter = account  # Store account filter for posting-level filtering
 
         entries = ledger.all_entries
         if account:
@@ -192,6 +194,44 @@ class FilteredLedger:
     def root_tree_closed(self) -> Tree:
         """A root tree for the balance sheet."""
         tree = Tree(self.entries)
+        tree.cap(self.ledger.options, self.ledger.fava_options.unrealized)
+        return tree
+
+    @cached_property
+    def root_tree_posting_filtered(self) -> Tree:
+        """A root tree with postings filtered by account filter.
+
+        Used for balance sheets, income statements, and trial balance
+        where only balances matching the account filter should be shown.
+        """
+        # Start with unfiltered entries to avoid transaction-level filtering
+        entries = self.ledger.all_entries
+
+        # Apply time filter if present (but NOT account filter at transaction level)
+        if self.date_range:
+            from beancount.ops.summarize import clamp_opt
+            entries, _ = clamp_opt(entries, self.date_range.begin, self.date_range.end, self.ledger.options)
+
+        # Now apply posting-level filtering in Tree
+        return Tree(entries, account_filter=self.account_filter)
+
+    @cached_property
+    def root_tree_closed_posting_filtered(self) -> Tree:
+        """A closed root tree with postings filtered by account filter.
+
+        Used for balance sheets where only balances matching the account
+        filter should be shown.
+        """
+        # Start with unfiltered entries to avoid transaction-level filtering
+        entries = self.ledger.all_entries
+
+        # Apply time filter if present (but NOT account filter at transaction level)
+        if self.date_range:
+            from beancount.ops.summarize import clamp_opt
+            entries, _ = clamp_opt(entries, self.date_range.begin, self.date_range.end, self.ledger.options)
+
+        # Now apply posting-level filtering in Tree
+        tree = Tree(entries, account_filter=self.account_filter)
         tree.cap(self.ledger.options, self.ledger.fava_options.unrealized)
         return tree
 

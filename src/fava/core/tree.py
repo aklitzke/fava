@@ -120,6 +120,7 @@ class Tree(dict[str, TreeNode]):
         self,
         entries: Iterable[Directive | data.Directive] | None = None,
         create_accounts: list[str] | None = None,
+        account_filter: str | None = None,
     ) -> None:
         super().__init__(self)
         self.get("", insert=True)
@@ -129,10 +130,23 @@ class Tree(dict[str, TreeNode]):
         if entries:
             account_balances: dict[str, CounterInventory]
             account_balances = defaultdict(CounterInventory)
+
+            # Import account filtering logic if needed
+            from .filters import Match
+            account_match = Match(account_filter) if account_filter else None
+
             for entry in entries:
                 if isinstance(entry, Open):
-                    self.get(entry.account, insert=True)
+                    if account_filter:
+                        # When filtering, only create Open accounts that match the filter
+                        if account_match and account_match(entry.account):
+                            self.get(entry.account, insert=True)
+                    else:
+                        self.get(entry.account, insert=True)
                 for posting in getattr(entry, "postings", []):
+                    # If account_filter is set, only include postings matching the filter
+                    if account_match and not account_match(posting.account):
+                        continue
                     account_balances[posting.account].add_position(posting)
 
             for name, balance in sorted(account_balances.items()):
